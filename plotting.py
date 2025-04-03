@@ -170,6 +170,7 @@ def main():
     parser.add_argument("-ms", "--num_widths", type=int, default=3)
     parser.add_argument("-t", "--time", type=int, default=0)
     parser.add_argument("-k", "--kind", type=int, default=1)
+    parser.add_argument("-d", "--dim", type=int, default=32)
     args = parser.parse_args()
     name = args.problem
     alias = args.alias
@@ -180,13 +181,13 @@ def main():
     for i in range(args.num_widths):
         widths.append(args.width_base*(2**(i)))
     
-    ds = [32]
+    ds = [args.dim]
     Ts = [args.time for i in range(len(ds))]
 
-    plot_omega(ds, widths, Ts, name, alias)
-    #plot_function_err(ds, widths, Ts, name, alias)
-    for d in ds:
-        plot_histograms(d, widths, name, alias)
+    #plot_omega(ds, widths, Ts, name, alias)
+    plot_function_err(ds, widths, Ts, name, alias)
+    # for d in ds:
+    #     plot_histograms(d, widths, name, alias)
 
 
     # for width_index in range(len(widths) - 1):
@@ -195,7 +196,7 @@ def main():
     #     plot_alignment(ds, widths, width_index, Ts, alias, name, args.kind)
 
 
-    plot_all_LR(ds, widths, Ts, alias, name)
+    #plot_all_LR(ds, widths, Ts, alias, name)
 
 if __name__ == "__main__":
     main()

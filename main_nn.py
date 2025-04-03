@@ -15,6 +15,7 @@ def run_sims(problem_params, d, widths, backup, hps, all_data, opts, lang=0, lpa
         M = widths[i]
         logging.info("Starting sim with width: %s" % M)
         (sn, L, R, Lavg) = prop_chaos.init_and_train(M, backup, all_data, hps, problem_params, opts, lang=lang, lpath=lpath)
+        logging.info("Ending sim with width: %s" % M)
         np.save("results/%s/data/losses_d_%s_m_%s_%s" % (alias, d, M, name), L)
         # np.save("results/%s/data/trainerr_d_%s_m_%s_%s" % (alias, d, M, name), Lavg)
         # np.save("results/%s/data/risks_d_%s_m_%s_%s" % (alias, d, M, name), R)
@@ -133,7 +134,8 @@ def main():
             new_backup = torch.normal(0,1/np.sqrt(d), size=(max_width,d)) # All runs will agree upon this (in some subset)
             new_backup[:m_back, :] = backup
             backup = new_backup
-            logging.info("Extended Backup to size %s" % max_width)
+            logging.info("Extended Backup from size %s to size %s" % (m_back, max_width))
+            np.save("results/%s/data/backup_d_%s_%s" % (alias, d, name), backup.detach().numpy())
     except FileNotFoundError:
         logging.info("Couldn't find existing backup so making new backup")
         backup = torch.normal(0,1/np.sqrt(d), size=(max_width,d)) # All runs will agree upon this (in some subset)
