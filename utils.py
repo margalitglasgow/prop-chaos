@@ -63,6 +63,24 @@ def hermite(x, k):
 def her(k):
   return lambda x: hermite(x, k)
 
+def ie4np(x):
+  xsq = torch.square(x)
+  return torch.exp(-xsq/2)*(2*xsq - 1)
+def ie4np_fun():
+  return  lambda x: ie4np(x)
+
+def ie4np_other(x):
+  xsq = torch.square(x)
+  return torch.exp(-xsq/2)*(2*xsq - 1) +  torch.exp(-xsq)*xsq
+def ie4np_other_fun():
+  return  lambda x: ie4np_other(x)
+
+def ge4(x):
+    xsq = torch.square(x)
+    return 5*(torch.exp(-xsq)*xsq - np.sqrt(3)/9)
+def ge4_fun():
+  return lambda x: ge4(x)
+
 # Complex Activations
 
 # Hermite k and Hermite 1

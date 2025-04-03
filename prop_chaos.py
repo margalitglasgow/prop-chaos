@@ -4,6 +4,7 @@ import torch.optim as optim
 
 import numpy as np
 import copy
+import logging
 
 # Code for Activations and Labels
 
@@ -30,16 +31,18 @@ class Net(nn.Module):
         x = self.fc2(x)
         return x
 
+    def path_norm(self):
+        return torch.matmul(torch.square(self.fc2.weight), torch.sum(torch.square(self.fc1.weight), dim=1))
+
 def corr_loss(y_true, y_pred):
     return -torch.mean(y_true * y_pred)
 
-def train(net, all_data, hps, problem_params, opts, optimizer, sn):
+def train(net, all_data, hps, problem_params, opts, optimizer, sn, ferr, lang=0, lpath=0):
     inputs, labels, test_inputs, test_labels = all_data["inputs"], all_data['labels'], all_data['test_inputs'], all_data['test_labels']
     label_fun, boolean, corr = problem_params["label_fun"], problem_params["boolean"], problem_params["corr"]
     batch_size, epoch, fresh_train_data, fresh_test_data, seed = hps["batch"], hps["epoch"], hps["fresh_train"], hps["fresh_test"], hps["seed"]
     verbose, k_indices = opts["print"], opts["k_indices"]
     n = len(labels)
-    print("Training n: %s " % n)
     d = len(inputs.T)
     losses = []
     train_err = []
@@ -69,34 +72,31 @@ def train(net, all_data, hps, problem_params, opts, optimizer, sn):
                 loss = torch.nn.MSELoss()(batch_outputs, batch_labels.reshape(batch_size,1))
             losses.append(loss.detach().numpy())
 
+            if lpath > 0:
+                loss += lpath*net.path_norm()
+
             optimizer.zero_grad()
             loss.backward()
-            # if not saved_error:
-            #     grad_norms = list(net.parameters())[0].grad.data.norm(2, dim=0)
-            #     maxnorm = grad_norms.max()
-            #     if maxnorm > current_max:
-            #         print("Saving Erroneous data with max norm %s at epoch %s (Time %s)" % (maxnorm, t, t*hps["lr"]*n/batch_size))
-            #         name = problem_params["name"]
-            #         np.save("results/%s/data/error_net_d_%s_m_%s_%s" % (name, d, len(grad_norms), name), net.fc1.weight.detach().numpy())
-            #         np.save("results/%s/data/error_inputs_d_%s_m_%s_%s" % (name, d, len(grad_norms), name), batch_inputs.detach().numpy())
-            #         np.save("results/%s/data/error_outputs_d_%s_m_%s_%s" % (name, d, len(grad_norms), name), batch_outputs.detach().numpy())
-            #         #saved_error = True
-            #         current_max = maxnorm
             optimizer.step()
 
             # Normalize weights to stay on the sphere
             with torch.no_grad():
-                norms = torch.norm(net.fc1.weight, dim=1, keepdim=True)
-                net.fc1.weight.copy_(net.fc1.weight / norms)
+                if lang > 0:
+                    net.fc1.weight += hps["lr"]*torch.normal(0, lang, size=(M, d))
+                if lpath == 0:
+                    norms = torch.norm(net.fc1.weight, dim=1, keepdim=True)
+                    net.fc1.weight.copy_(net.fc1.weight / norms)
         # if t % 2 == 0:
         sn.append(np.copy(net.fc1.weight.detach().numpy()[:, :k_indices + 1]))
         # Every 10th step, print training stats
         if t % opts["test_freq"] == 0:
-            test_error = test_module(t*int(n/batch_size) + i, net, loss, d, label_fun, test_inputs, test_labels, verbose=verbose)
+            ferr_out, test_error = test_module(t*int(n/batch_size) + i, net, loss, d, label_fun, test_inputs, test_labels, verbose=verbose)
             # train_error = test_module(t*int(n/batch_size) + i, net, loss, d, label_fun, train_inputs, train_labels, verbose=verbose)
             # train_err.append(train_error)
+            ferr.append(ferr_out)
             test_err.append(test_error)
             train_err.append(np.mean(losses[-int(n/batch_size):]))
+    
 
         if t == epoch - 1:
             test_module(t, net, loss, d, label_fun, test_inputs, test_labels, verbose=True)
@@ -118,7 +118,7 @@ def test_module(epoch, net, train_error, d, label_fun, test_inputs, test_labels,
     dictionary['tr-err'] = train_error
     if verbose:
         printformat(dictionary)
-    return test_error.detach().numpy()
+    return outputs.detach().numpy(), test_error.detach().numpy()
 
 def printformat(dictionary):
     for key in dictionary.keys():
@@ -165,12 +165,31 @@ def weird_init(net, m, d, signed=False, scale=1, backup=None):
     net.fc2.bias = torch.nn.Parameter(torch.zeros(1))
     return copy.deepcopy(net)
 
-def init_and_train(width, backup, all_data, hps, problem_params, opts):
+def init_and_train(width, backup, all_data, hps, problem_params, opts, lang=0, lpath=0):
     new_net = Net(problem_params["d"], width, problem_params["activation"])
     normal_init(new_net, width, problem_params["d"], backup=copy.deepcopy(backup), signed=problem_params["signed"])
     # Train
     p = list(new_net.parameters())
     optimizer = optim.SGD([p[0]], lr=hps["lr"]*width) # Just train first layer, LR gets multiplied by m because MF velocity scales like m * derivative of loss.
-    saved_neurons = []
-    (L, R, Lavg) = train(new_net, all_data, hps, problem_params, opts, optimizer, saved_neurons)
+    if lpath > 0:
+        optimizer = optim.SGD([p[0], p[2]], lr=hps["lr"]*width)
+        logging.log("Training with lpath = %s" % lpath)
+    epochs = hps["epoch"]
+    div = 10
+    L = []
+    R = []
+    Lavg = []
+    for i in range(div):
+        hps["epoch"] = int(epochs/div)
+        if i == div - 1:
+            hps["epoch"] = epochs - (div - 1)*int(epochs/div)
+        saved_neurons = []
+        ferrouts = []
+        (Li, Ri, Lavgi) = train(new_net, all_data, hps, problem_params, opts, optimizer, saved_neurons, ferrouts, lang=lang, lpath=lpath)
+        np.save("results/%s/data/saved_dynamics_d_%s_m_%s_%s_%s" % (problem_params["alias"], problem_params["d"], width, problem_params["name"], i), np.array(saved_neurons))
+        np.save("results/%s/data/xout_d_%s_m_%s_%s_%s" % (problem_params["alias"], problem_params["d"], width, problem_params["name"], i), np.array(ferrouts))
+        L = L + Li
+        R = R + Ri
+        Lavg = Lavg + Lavgi
+    hps["epoch"] = epochs
     return saved_neurons, L, R, Lavg
