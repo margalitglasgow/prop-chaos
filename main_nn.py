@@ -4,6 +4,8 @@ import problems
 
 import argparse
 import torch
+from torch.cuda.amp import autocast, GradScaler
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import numpy as np
 import logging
 

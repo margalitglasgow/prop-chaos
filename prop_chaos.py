@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.cuda.amp import autocast, GradScaler
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import numpy as np
 import copy
@@ -37,7 +39,7 @@ class Net(nn.Module):
 def corr_loss(y_true, y_pred):
     return -torch.mean(y_true * y_pred)
 
-def train(net, all_data, hps, problem_params, opts, optimizer, sn, ferr, lang=0, lpath=0):
+def train(net, all_data, hps, problem_params, opts, optimizer, sn, ferr, scaler, lang=0, lpath=0):
     inputs, labels, test_inputs, test_labels = all_data["inputs"], all_data['labels'], all_data['test_inputs'], all_data['test_labels']
     label_fun, boolean, corr = problem_params["label_fun"], problem_params["boolean"], problem_params["corr"]
     batch_size, epoch, fresh_train_data, fresh_test_data, seed = hps["batch"], hps["epoch"], hps["fresh_train"], hps["fresh_test"], hps["seed"]
@@ -47,9 +49,7 @@ def train(net, all_data, hps, problem_params, opts, optimizer, sn, ferr, lang=0,
     losses = []
     train_err = []
     test_err = []
-    test_module(-1, net, 0, d, label_fun, test_inputs, test_labels, fresh_data=fresh_test_data, verbose=True)
-    saved_error = False
-    current_max = 10
+    # test_module(-1, net, 0, d, label_fun, test_inputs, test_labels, fresh_data=fresh_test_data, verbose=True)
     for t in range(epoch):
         # If we are not reusing data, get fresh data.
         if fresh_train_data:
@@ -65,19 +65,22 @@ def train(net, all_data, hps, problem_params, opts, optimizer, sn, ferr, lang=0,
             S = np.random.choice(n,batch_size, replace=False)
             batch_inputs = inputs[S,:]
             batch_labels = labels[S].reshape(batch_size,1)
-            batch_outputs = net(batch_inputs)
-            if corr:
-                loss = corr_loss(batch_outputs, batch_labels.reshape(batch_size,1))
-            else:
-                loss = torch.nn.MSELoss()(batch_outputs, batch_labels.reshape(batch_size,1))
+            with autocast():
+                batch_outputs = net(batch_inputs)
+                if corr:
+                    loss = corr_loss(batch_outputs, batch_labels.reshape(batch_size,1))
+                else:
+                    loss = torch.nn.MSELoss()(batch_outputs, batch_labels.reshape(batch_size,1))
+                if lpath > 0:
+                    loss += lpath*net.path_norm()
             losses.append(loss.detach().numpy())
 
-            if lpath > 0:
-                loss += lpath*net.path_norm()
-
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()      # Scales loss to avoid underflow
+            scaler.step(optimizer)             # Unscales and applies optimizer step
+            scaler.update()                    # Updates scale for next step
+            # loss.backward()
+            # optimizer.step()
 
             # Normalize weights to stay on the sphere
             with torch.no_grad():
@@ -109,8 +112,9 @@ def test_module(epoch, net, train_error, d, label_fun, test_inputs, test_labels,
       test_inputs, test_labels = get_data(n_test, d, label_fun, boolean=boolean)
 
     n_test = len(test_labels)
-    outputs = net(test_inputs)
-    test_error = torch.nn.MSELoss()(outputs, test_labels.reshape(n_test,1))
+    with autocast():
+        outputs = net(test_inputs)
+        test_error = torch.nn.MSELoss()(outputs, test_labels.reshape(n_test,1))
 
     dictionary = dict()
     dictionary['epoch'] = epoch
@@ -166,7 +170,7 @@ def weird_init(net, m, d, signed=False, scale=1, backup=None):
     return copy.deepcopy(net)
 
 def init_and_train(width, backup, all_data, hps, problem_params, opts, lang=0, lpath=0):
-    new_net = Net(problem_params["d"], width, problem_params["activation"])
+    new_net = Net(problem_params["d"], width, problem_params["activation"]).to(device)
     normal_init(new_net, width, problem_params["d"], backup=copy.deepcopy(backup), signed=problem_params["signed"])
     # Train
     p = list(new_net.parameters())
@@ -174,6 +178,7 @@ def init_and_train(width, backup, all_data, hps, problem_params, opts, lang=0, l
     if lpath > 0:
         optimizer = optim.SGD([p[0], p[2]], lr=hps["lr"]*width)
         logging.log("Training with lpath = %s" % lpath)
+    scaler = GradScaler()  # For scaling gradients safely in float16
     epochs = hps["epoch"]
     div = 10
     L = []
@@ -185,7 +190,7 @@ def init_and_train(width, backup, all_data, hps, problem_params, opts, lang=0, l
             hps["epoch"] = epochs - (div - 1)*int(epochs/div)
         saved_neurons = []
         ferrouts = []
-        (Li, Ri, Lavgi) = train(new_net, all_data, hps, problem_params, opts, optimizer, saved_neurons, ferrouts, lang=lang, lpath=lpath)
+        (Li, Ri, Lavgi) = train(new_net, all_data, hps, problem_params, opts, optimizer, saved_neurons, ferrouts, scaler, lang=lang, lpath=lpath)
         np.save("results/%s/data/saved_dynamics_d_%s_m_%s_%s_%s" % (problem_params["alias"], problem_params["d"], width, problem_params["name"], i), np.array(saved_neurons))
         np.save("results/%s/data/xout_d_%s_m_%s_%s_%s" % (problem_params["alias"], problem_params["d"], width, problem_params["name"], i), np.array(ferrouts))
         L = L + Li
