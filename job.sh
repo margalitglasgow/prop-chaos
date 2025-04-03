@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH -p mit_normal
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 
 source ./bin/activate
 mkdir results/"$2"
@@ -15,19 +15,24 @@ mkdir results/"$2"/plotdata
 
 
 # Experimental Jobs
-# mkdir results/XOR_4_lpath
-# mkdir results/XOR_4_lpath/data
-# mkdir results/XOR_4_lang
-# mkdir results/XOR_4_lang/data
+#python3 main_nn.py -d 128 -mb 32768 -ms 1 -t 40 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For Hop_1_3 memory experiment
+#python3 main_nn.py -d 32 -mb 32768 -ms 1 -t 10 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # XOR_4 memory experiment
 # python3 main_nn.py -d 32 -mb 512 -ms 7 -t 400 -p XOR_4 -l 0.25 -v 0.001 -a XOR_4_lang # For Hop_1_3, XOR_4 langevin
 #python3 main_nn.py -d 32 -mb 512 -ms 7 -t 400 -p XOR_4 -l 0.25 -r 0.1 -a XOR_4_lpath # For Hop_1_3, XOR_4 + lpath
 
 # BIG M JOBS
 
-#python3 main_nn.py -d 128 -mb 16384 -ms 2 -t 600 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For Hop_1_3, XOR_4
-#python3 main_nn.py -d 32 -mb 32768 -ms 1 -t 600 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For XOR_4
+#python3 main_nn.py -d 128 -mb 16384 -ms 2 -t 600 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For Hop_1_3#python3 main_nn.py -d 128 -mb 16384 -ms 2 -t 600 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For Hop_1_3
+python3 main_nn.py -d 32 -mb 131072 -ms 1 -t 600 -p "$1" -l 0.25 -a "$2" -j $SLURM_JOB_ID # For XOR_4
 #python3 main_nn.py -d 32 -mb 16384 -ms 1 -t 32 -p "$1" -l 0.005 -a "$2" -j $SLURM_JOB_ID # For He4_misspecfied and Man_big_2
-python3 main_nn.py -d 32 -mb 32768 -ms 1 -t 64 -p "$1" -l 0.02 -a "$2" -j $SLURM_JOB_ID # For He4, Ge4
+#python3 main_nn.py -d 32 -mb 32768 -ms 1 -t 64 -p "$1" -l 0.02 -a "$2" -j $SLURM_JOB_ID # For He4, Ge4 
+
+# Resource consumption for 32768 run above
+# Hop_1_3. 65GB 4 hours (Just storing the net is 16G, and may take more memory to train...)
+# XOR_4. 16 GB 1.25 hours --> can scale this one up
+# He4 32 GB, 4.5 hours
+# He4_misspecified 32 GB, 11-14 hours
+# Man_big_2 32 GB, 8.5 hours
 
 # Smal M JOBS
 
