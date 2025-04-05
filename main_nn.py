@@ -4,8 +4,8 @@ import problems
 
 import argparse
 import torch
-from torch.cuda.amp import autocast, GradScaler
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# from torch.cuda.amp import autocast, GradScaler
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import numpy as np
 import logging
 
@@ -97,12 +97,12 @@ def main():
     # Set up logger
     logging.basicConfig(filename="results/%s/info_%s.log" % (alias, args.jobid), level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     logging.info("Name: %s, d: %s, n: %s, LR: %s, Time: %s, Epoch: %s" % (problem_params["name"], d, n, lr, epoch*lr*n/batch, epoch))
-    np.random.seed(None)
-    st0 = np.random.get_state()
-    np.random.set_state(st0)
-    st1 = torch.initial_seed()
-    torch.manual_seed(st1)
-    logging.info("Numpy seed: %s, Torch seed: %s" % (st0, st1))
+    # np.random.seed(None)
+    # st0 = np.random.get_state()
+    # np.random.set_state(st0)
+    # st1 = torch.initial_seed()
+    # torch.manual_seed(st1)
+    # logging.info("Numpy seed: %s, Torch seed: %s" % (st0, st1))
 
     # Load or create training and test data
     try:
