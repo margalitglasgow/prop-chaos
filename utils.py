@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import numpy as np
 import math
+import logging
 
 def her_to_pol(k):
   if k == 1:
@@ -34,8 +36,11 @@ def her_dic_to_pol(dic):
   return p_dic
 
 def poly_act(x, poly_dict):
-  out = torch.zeros(size=x.size())
+  out = torch.zeros(size=x.size()).to(device)
   for k in poly_dict.keys():
+    # logging.info("Device of x: %s" % x.device)
+    # logging.info("Device of out: %s" % out.device)
+    # logging.info(device)
     out += poly_dict[k]*torch.pow(x, k)
   return out
 def poly_act_fun(poly_dict):
@@ -94,6 +99,7 @@ def complex_act_high_IE(k):
 # General activation/label. {k: c_k} ---> returns sum_k c_k He_k(x)
 def dict_act(x, dic):
   out = torch.zeros(size=x.size())
+  out.to(device)
   for k in dic.keys():
     out += hermite(x, k)*dic[k]
   return out
@@ -172,6 +178,8 @@ def XOR(x, k):
     return prod #/(k*(np.sqrt(math.factorial(k))))
 def XOR_fun(k):
   return lambda x: XOR(x, k)
+def XOR_scaled_fun(k):
+  return lambda x: XOR(x, k)/4
 
 def staircase(x,k):
   res = XOR(x, 1)

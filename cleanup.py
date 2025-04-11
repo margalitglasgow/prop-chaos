@@ -14,8 +14,9 @@ def compute_diffs(d, widths, name, alias, k_indices):
         sn1 = np.load("results/%s/data/saved_dynamics_d_%s_m_%s_%s.npy" % (alias, d, m, name))
         sn3 = sn2[:, :m, :]
         diff = sn1 - sn3
+        d_saved = diff.shape[2]
         normsq = np.square(np.linalg.norm(diff[:, :, :k_indices], axis=2))
-        normsq = normsq +  np.square(diff[:, :, k_indices])*(d - k_indices)
+        normsq = normsq +  np.mean(np.square(diff[:, :, k_indices:]), axis=2)*(d - k_indices)/(d_saved - k_indices)
         norm_all_d = np.sqrt(normsq)
         norm_k = np.linalg.norm(diff[:, :, :k_indices], axis=2)
         np.save("results/%s/plotdata/diffs_all_d_d_%s_m_%s_%s" % (alias, d, m, name), norm_all_d)
@@ -23,10 +24,12 @@ def compute_diffs(d, widths, name, alias, k_indices):
 
 def compute_ferr(d, widths, name, alias):
     fout2 =  np.load("results/%s/data/xout_d_%s_m_%s_%s.npy" % (alias, d, widths[-1], name))
+    fout2 = fout2.astype(np.float64)
     # Dimension should be #saves x n
     for i in range(len(widths) - 1):
         m = widths[i]
         fout1 = np.load("results/%s/data/xout_d_%s_m_%s_%s.npy" % (alias, d, m, name))
+        fout1 = fout1.astype(np.float64)
         diffsq = np.mean(np.square(fout2 - fout1), axis=1)
         np.save("results/%s/plotdata/function_err_d_%s_m_%s_%s" % (alias, d, m, name), diffsq)
 
@@ -52,7 +55,7 @@ def compile_sn(prefix, d, widths, name, alias, div=1):
         # (e, m, k) = saved.shape
         # sn_padded = np.zeros(shape=(e, widths[-1], k))
         # sn_padded[:, :m, :] = saved
-        np.save("results/%s/data/%s_d_%s_m_%s_%s" % (alias, prefix, d, width, name), saved)
+        np.save("results/%s/data/%s_d_%s_m_%s_%s" % (alias, prefix, d, width, name), saved.astype(np.float16))
 
 def main():
     parser = argparse.ArgumentParser(description="Run Simulations.")
@@ -83,7 +86,7 @@ def main():
 
     T = args.time
 
-    # Complies saved data into one file for each m
+    #Complies saved data into one file for each m
     for prefix in ["saved_dynamics", "xout"]:
         try:
             compile_sn(prefix, d, widths, name, alias, div=10)
