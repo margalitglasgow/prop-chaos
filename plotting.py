@@ -369,7 +369,7 @@ def main():
         widths.append(args.width_base*(2**(i)))
     
     d = args.dim
-    ds = [d, 2*d, 4*d, 8*d]
+    ds = [d, 4*d]# 2*d, 4*d, 8*d]
     Ts = [args.time for i in range(len(ds))]
 
     #plot_all_LR(ds, widths, Ts, alias, name) # This is outdated

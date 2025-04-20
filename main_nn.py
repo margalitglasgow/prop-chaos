@@ -4,8 +4,8 @@ import problems
 
 import argparse
 import torch
-# from torch.cuda.amp import autocast, GradScaler
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from torch.cuda.amp import autocast, GradScaler
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import numpy as np
 import logging
 
@@ -15,7 +15,11 @@ def run_sims(problem_params, d, widths, backup, hps, all_data, opts, lang=0, lpa
     max_width = widths[-1]
     for i in range(len(widths)):
         M = widths[i]
-        logging.info("Starting sim with width: %s" % M)
+        if M > 65536:
+            accum = min(int(M/65536), 16)
+            hps["batch"] = int(hps["init_batch"]/accum)
+            hps["accum"] = accum
+        logging.info("Starting sim with width: %s, accum %s" % (M, hps["accum"]))
         (sn, L, R, Lavg) = prop_chaos.init_and_train(M, backup, all_data, hps, problem_params, opts, lang=lang, lpath=lpath)
         logging.info("Ending sim with width: %s" % M)
         np.save("results/%s/data/losses_d_%s_m_%s_%s" % (alias, d, M, name), L)
@@ -52,11 +56,12 @@ def main():
     parser.add_argument("-v", "--langevin", type=float, default=0)
     parser.add_argument("-r", "--pathreg", type=float, default=0)
     parser.add_argument("-j", "--jobid", type=int, default=0)
+    parser.add_argument("-f", "--full", type=bool, default=False)
     args = parser.parse_args()
 
     problem_params = problems.PP[args.problem]
     hps = {"fresh_train": False, "fresh_test": False}
-    opts = {"k_indices": problem_params["k_indices"], "print": False, "test_freq": 2}
+    opts = {"k_indices": problem_params["k_indices"], "print": False, "test_freq": 1}
 
     name = problem_params["name"]
 
@@ -67,6 +72,9 @@ def main():
 
     d = args.dimension
     problem_params["d"] = d
+
+    if args.full:
+        opts["k_indices"] = d
 
     widths = []
     for i in range(args.num_widths):
@@ -83,16 +91,20 @@ def main():
     
     hps["seed"] = 302
     if args.ndata == 0:
-        n = 2048*d # Though this should perhaps scale up with d -- perhaps like d^k/2-1
+        #n = 2048*d # Though this should perhaps scale up with d -- perhaps like d^k/2-1 131072
+        n = 131072
     else:
         n = args.ndata
-    batch = int(n*4/d) # If n: full-batch (no SGD)
+    #batch = int(n*4/d) # If n: full-batch (no SGD)
+    batch = 8192
     hps["batch"] = batch
+    hps["init_batch"] = batch
+    hps["accum"] = 1
 
     epoch = int(T*batch/(lr*n))
     hps["epoch"] = epoch
 
-    n_test = max(n, 2048)
+    n_test = max(int(n/2), 2048)
 
     # Set up logger
     logging.basicConfig(filename="results/%s/info_%s.log" % (alias, args.jobid), level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -106,42 +118,56 @@ def main():
 
     # Load or create training and test data
     try:
-        inputs_np = np.load("results/%s/data/inputs_d_%s_%s.npy" % (alias, d, name))
-        labels_np = np.load("results/%s/data/labels_d_%s_%s.npy" % (alias, d, name))
-        test_inputs_np = np.load("results/%s/data/test_inputs_d_%s_%s.npy" % (alias, d, name))
-        test_labels_np = np.load("results/%s/data/test_labels_d_%s_%s.npy" % (alias, d, name))
-        inputs = torch.from_numpy(inputs_np)
+        inputs_np = np.load("results/%s/data/inputs_%s.npy" % (alias, name))
+        labels_np = np.load("results/%s/data/labels_%s.npy" % (alias, name))
+        test_inputs_np = np.load("results/%s/data/test_inputs_%s.npy" % (alias, name))
+        test_labels_np = np.load("results/%s/data/test_labels_%s.npy" % (alias, name))
+        logging.info("Loaded Data")
         labels = torch.from_numpy(labels_np)
-        test_inputs = torch.from_numpy(test_inputs_np)
         test_labels = torch.from_numpy(test_labels_np)
-        logging.info("Loaded Train and Test Data")
+        inputs = torch.from_numpy(inputs_np)
+        test_inputs = torch.from_numpy(test_inputs_np)
+        d_old = inputs_np.shape[1]
+        # Extend size of inputs
+        if d > d_old:
+            inputs = prop_chaos.extend_data(inputs, d, boolean=problem_params["boolean"])
+            test_inputs = prop_chaos.extend_data(test_inputs, d, boolean=problem_params["boolean"])
+            logging.info("Extended Train and Test Data to d = %s" % d)
+            np.save("results/%s/data/inputs_%s" % (alias, name), inputs.detach().numpy())
+            np.save("results/%s/data/test_inputs_%s" % (alias, name), test_inputs.detach().numpy())
+        inputs = inputs[:, :d]
+        test_inputs = test_inputs[:, :d]
     except FileNotFoundError:
         logging.info("Couldn't find existing data so using new data")
         inputs, labels = prop_chaos.get_data(n, d, problem_params["label_fun"], boolean=problem_params["boolean"])
         test_inputs, test_labels = prop_chaos.get_data(n_test, d, problem_params["label_fun"], boolean=problem_params["boolean"])
-        np.save("results/%s/data/inputs_d_%s_%s" % (alias, d, name), inputs.detach().numpy())
-        np.save("results/%s/data/labels_d_%s_%s" % (alias, d, name), labels.detach().numpy())
-        np.save("results/%s/data/test_inputs_d_%s_%s" % (alias, d, name), test_inputs.detach().numpy())
-        np.save("results/%s/data/test_labels_d_%s_%s" % (alias, d, name), test_labels.detach().numpy())
+        np.save("results/%s/data/inputs_%s" % (alias, name), inputs.detach().numpy())
+        np.save("results/%s/data/labels_%s" % (alias, name), labels.detach().numpy())
+        np.save("results/%s/data/test_inputs_%s" % (alias, name), test_inputs.detach().numpy())
+        np.save("results/%s/data/test_labels_%s" % (alias, name), test_labels.detach().numpy())
     finally:
         all_data = {"inputs": inputs, "labels": labels, "test_inputs": test_inputs, "test_labels": test_labels}
     # Load or create backup net
     try:
-        back = np.load("results/%s/data/backup_d_%s_%s.npy" % (alias, d, name))
+        back = np.load("results/%s/data/backup_%s.npy" % (alias, name))
         logging.info("Loaded Backup")
         m_back = back.shape[0]
+        d_back = back.shape[1]
         backup = torch.from_numpy(back)
         # Make backup bigger if needed
-        if m_back < max_width:
-            new_backup = torch.normal(0,1/np.sqrt(d), size=(max_width,d)) # All runs will agree upon this (in some subset)
-            new_backup[:m_back, :] = backup
+        if m_back < max_width or d_back < d:
+            new_m = max(max_width, m_back)
+            new_d = max(d_back, d)
+            new_backup = torch.normal(0,1, size=(new_m,new_d)) # All runs will agree upon this (in some subset)
+            new_backup[:m_back, :d_back] = backup
             backup = new_backup
-            logging.info("Extended Backup from size %s to size %s" % (m_back, max_width))
-            np.save("results/%s/data/backup_d_%s_%s" % (alias, d, name), backup.detach().numpy())
+            logging.info("Extended Backup from size (%s, %s) to size (%s, %s)" % (m_back, d_back, new_m, new_d))
+            np.save("results/%s/data/backup_%s" % (alias, name), backup.detach().numpy())
+        backup = backup[:m_back, :d]
     except FileNotFoundError:
         logging.info("Couldn't find existing backup so making new backup")
-        backup = torch.normal(0,1/np.sqrt(d), size=(max_width,d)) # All runs will agree upon this (in some subset)
-        np.save("results/%s/data/backup_d_%s_%s" % (alias, d, name), backup.detach().numpy())
+        backup = torch.normal(0,1, size=(max_width,d)) # All runs will agree upon this (in some subset)
+        np.save("results/%s/data/backup_%s" % (alias, name), backup.detach().numpy())
     finally:
         run_sims(problem_params, d, widths, backup, hps, all_data, opts)
 

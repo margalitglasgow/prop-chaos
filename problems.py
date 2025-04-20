@@ -97,6 +97,17 @@ teachers_rand[:, :k_indices] = proj_rand/torch.norm(proj_rand, dim=1, keepdim=Tr
 problem_params_He4_rand_2_8 = {"activation": utils.her(k_GT), "label_fun": utils.teacher_fun(teachers_rand, utils.her(k_GT)), "boolean": False, "signed": False, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
 PP[problem_name] = problem_params_He4_rand_2_8
 
+problem_name = "He4_random_2_16"
+# 16 random neurons in 2D
+K = 16
+k_GT = 4
+k_indices = 2
+teachers_rand = torch.zeros(size=(K,k_indices))
+proj_rand = torch.normal(0,1, size=(K,k_indices))
+teachers_rand[:, :k_indices] = proj_rand/torch.norm(proj_rand, dim=1, keepdim=True)
+problem_params_He4_rand_2_16 = {"activation": utils.her(k_GT), "label_fun": utils.teacher_fun(teachers_rand, utils.her(k_GT)), "boolean": False, "signed": False, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
+PP[problem_name] = problem_params_He4_rand_2_16
+
 problem_name = "He4_random_8_8"
 # 8 random neurons in 8D
 K = 8
@@ -107,6 +118,17 @@ proj_rand2 = torch.normal(0,1, size=(K,k_indices))
 teachers_rand2[:, :k_indices] = proj_rand2/torch.norm(proj_rand2, dim=1, keepdim=True)
 problem_params_He4_rand_8_8 = {"activation": utils.her(k_GT), "label_fun": utils.teacher_fun(teachers_rand2, utils.her(k_GT)), "boolean": False, "signed": False, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
 PP[problem_name] = problem_params_He4_rand_8_8
+
+problem_name = "He4_random_16_16"
+# 16 random neurons in 16D
+K = 16
+k_GT = 4
+k_indices = 16
+teachers_rand2 = torch.zeros(size=(K,k_indices))
+proj_rand2 = torch.normal(0,1, size=(K,k_indices))
+teachers_rand2[:, :k_indices] = proj_rand2/torch.norm(proj_rand2, dim=1, keepdim=True)
+problem_params_He4_rand_16 = {"activation": utils.her(k_GT), "label_fun": utils.teacher_fun(teachers_rand2, utils.her(k_GT)), "boolean": False, "signed": False, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
+PP[problem_name] = problem_params_He4_rand_16
 
 problem_name = "Man_2"
 # Target function is uniform over 2D circle
@@ -143,11 +165,11 @@ k_indices = 4
 problem_params_XOR_4 = {"activation": utils.relu, "label_fun": utils.XOR_fun(k_GT), "boolean": True, "signed": True, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
 PP[problem_name] = problem_params_XOR_4
 
-problem_name = "XOR_bigg"
+problem_name = "XOR_4_scaled"
 # 4-XOR
 k_GT = 4
 k_indices = 4
-problem_params_XOR_4 = {"activation": utils.relu, "label_fun": utils.XOR_fun(k_GT), "boolean": True, "signed": True, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
+problem_params_XOR_4 = {"activation": utils.relu, "label_fun": utils.XOR_scaled_fun(k_GT), "boolean": True, "signed": True, "corr": False, "name": problem_name, "k_GT": k_GT, "k_indices": k_indices}
 PP[problem_name] = problem_params_XOR_4
 
 problem_name = "XOR_5"
